@@ -1,0 +1,627 @@
+import { predict, toDay, fromDay } from './predict.js';
+import { encryptBackup, decryptBackup } from './backup.js';
+import * as db from './db.js';
+
+const BACKUP_REMIND_DAYS = 30;
+const MIN_PASS = 8;
+const OVULATION_DAY = 12;   // 生理開始日を 1 日目として何日目を排卵日の目安にするか
+const MEMO_HEAD_LEN = 24;   // カレンダー下の見出しに出すメモの文字数（超えたら「続き」でジャンプ）
+const FLOW_LABEL = { light: '少なめ', normal: 'ふつう', heavy: '多め' };
+const WEEK = ['日', '月', '火', '水', '木', '金', '土'];
+
+const $ = id => document.getElementById(id);
+
+let periods = [];
+let notes = new Map();  // 日付 → メモの文
+let viewMonth;      // 表示中の月の 1 日（'YYYY-MM-01'）
+let editingId = null;
+let view = 'cal';    // 'cal' カレンダー / 'table' 表
+
+function today() {
+  const d = new Date();
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+function md(s) {
+  const [, m, d] = s.split('-').map(Number);
+  return `${m}/${d}`;
+}
+
+function ymd(s) {
+  const [y, m, d] = s.split('-').map(Number);
+  return `${y}年${m}月${d}日`;
+}
+
+function el(tag, props = {}, children = []) {
+  const e = Object.assign(document.createElement(tag), props);
+  e.append(...children);
+  return e;
+}
+
+// ---- 読み込みと描画 ----
+
+async function load() {
+  periods = (await db.listPeriods()).sort((a, b) => a.start.localeCompare(b.start));
+  notes = new Map((await db.listNotes()).map(n => [n.date, n.text]));
+  render();
+}
+
+function render() {
+  const result = predict(periods, today());
+  renderSummary(result);
+  renderCalendar(result);
+  renderQuickActions();
+  renderTable(result);
+  renderHistory(result);
+  renderNotes();
+  renderBackupInfo();
+}
+
+function openPeriod() {
+  const last = periods[periods.length - 1];
+  return last && !last.end ? last : null;
+}
+
+function renderSummary(r) {
+  const box = $('summary');
+  box.replaceChildren();
+  if (!r) {
+    box.append(el('p', { className: 'big', textContent: '最初の記録を入れると、予測が始まります。' }));
+    return;
+  }
+
+  const open = openPeriod();
+  const n = r.next[0];
+  if (open) {
+    box.append(el('p', { className: 'big', textContent: `生理中（${toDay(today()) - toDay(open.start) + 1}日目）` }));
+  } else if (r.overdue > 0) {
+    box.append(el('p', { className: 'big', textContent: `予定の幅を${r.overdue}日過ぎています` }));
+  } else if (r.daysUntil > 0) {
+    box.append(el('p', { className: 'big', textContent: `次の生理まで あと${r.daysUntil}日` }));
+  } else {
+    box.append(el('p', { className: 'big', textContent: '今日が予定日ごろです' }));
+  }
+
+  box.append(
+    el('p', { textContent: `次の予定：${md(n.center)}（${md(n.earliest)}〜${md(n.latest)}ごろ）` }),
+    el('p', { className: 'small', textContent: `今日は周期の${r.dayOfCycle}日目（前回の開始：${md(r.lastStart)}）` }),
+  );
+
+  const b = r.basis;
+  const lines = [];
+  if (b.used) {
+    lines.push(`直近${b.used}周期（中央値${b.ownMedian}日${b.ownSd != null ? `・ばらつき±${b.ownSd}日` : ''}）をもとに、周期${r.cycle}日・幅±${r.spread}日で計算しています。`);
+  } else {
+    lines.push('まだ周期が測れないため、一般的な値（周期28日）で計算しています。');
+  }
+  if (b.used && b.usingPrior) lines.push('記録が少ないうちは一般的な値（28日）も混ぜています。記録が増えるほど、ご自身の値に近づきます。');
+  if (b.gaps) lines.push(`ふだんよりかなり長い間隔の${b.gaps}件は、記録漏れの可能性があるため計算から外しています（表と一覧に「記録漏れ？」の印）。`);
+  if (b.excluded > b.gaps) lines.push(`極端に短い間隔の${b.excluded - b.gaps}件も、計算から外しています。`);
+  box.append(el('details', {}, [
+    el('summary', { textContent: '予測の根拠' }),
+    ...lines.map(t => el('p', { className: 'small', textContent: t })),
+  ]));
+}
+
+function dayMarks(r) {
+  // 日数 → クラス名の集合
+  const marks = new Map();
+  const add = (day, cls) => {
+    if (!marks.has(day)) marks.set(day, new Set());
+    marks.get(day).add(cls);
+  };
+  const t = toDay(today());
+  periods.forEach((p, i) => {
+    const s = toDay(p.start);
+    const e = p.end ? toDay(p.end) : Math.max(s, t);
+    for (let d = s; d <= e; d++) add(d, 'period');
+    // 次の生理が先に来ている周期には付けない
+    const ovu = s + OVULATION_DAY - 1;
+    const nextStart = periods[i + 1] ? toDay(periods[i + 1].start) : Infinity;
+    if (ovu < nextStart) add(ovu, 'ovulation');
+  });
+  if (r) {
+    for (const n of r.next) {
+      for (let d = toDay(n.earliest); d <= toDay(n.latest); d++) add(d, 'range');
+      for (let d = toDay(n.center); d < toDay(n.center) + n.length; d++) add(d, 'predicted');
+      add(toDay(n.center) + OVULATION_DAY - 1, 'ovulation');
+    }
+  }
+  for (const date of notes.keys()) add(toDay(date), 'note');
+  add(t, 'today');
+  return marks;
+}
+
+function renderCalendar(r) {
+  const [y, m] = viewMonth.split('-').map(Number);
+  $('monthLabel').textContent = `${y}年${m}月`;
+  const first = toDay(viewMonth);
+  const firstWeekday = new Date(Date.UTC(y, m - 1, 1)).getUTCDay();
+  const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const marks = dayMarks(r);
+
+  const cal = $('calendar');
+  cal.replaceChildren(...WEEK.map(w => el('div', { className: 'wd', textContent: w })));
+  for (let i = 0; i < firstWeekday; i++) cal.append(el('div'));
+  for (let i = 0; i < daysInMonth; i++) {
+    const day = first + i;
+    const cls = marks.get(day);
+    const cell = el('button', { type: 'button', className: 'day', textContent: String(i + 1) });
+    if (cls) {
+      // 記録がある日は予定の色を出さない
+      if (cls.has('period')) cls.delete('predicted');
+      cell.classList.add(...cls);
+    }
+    cell.addEventListener('click', () => openDay(fromDay(day)));
+    cal.append(cell);
+  }
+  renderMonthNotes();
+}
+
+const monthDates = () => [...notes.keys()].filter(d => d.startsWith(viewMonth.slice(0, 8))).sort();
+
+function weekday(date) {
+  return WEEK[new Date(toDay(date) * 86400000).getUTCDay()];
+}
+
+// カレンダーの下に、表示中の月のメモを見出しのように並べる
+function renderMonthNotes() {
+  const box = $('monthNotes');
+  box.replaceChildren();
+  const dates = monthDates();
+  if (!dates.length) return;
+  const [, m] = viewMonth.split('-').map(Number);
+  box.append(el('h3', { textContent: `${m}月のメモ` }));
+  const list = el('ul');
+  for (const date of dates) {
+    const text = notes.get(date);
+    const firstLine = text.split('\n')[0];
+    const long = text.includes('\n') || text.length > MEMO_HEAD_LEN;
+    const head = long ? `${firstLine.slice(0, MEMO_HEAD_LEN)}…` : text;
+    const day = Number(date.slice(8));
+    const li = el('li', {}, [
+      el('span', { className: 'mn-date', textContent: `${day}日（${weekday(date)}）` }),
+      el('span', { className: 'mn-text', textContent: head }),
+    ]);
+    if (long) {
+      li.append(el('a', { href: `#note-${date}`, className: 'mn-more', textContent: '続き', onclick: e => { e.preventDefault(); jumpToNote(date); } }));
+    }
+    list.append(li);
+  }
+  box.append(list);
+}
+
+function jumpToNote(date) {
+  const item = document.getElementById(`note-${date}`);
+  if (!item) return;
+  item.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  item.classList.remove('flash');
+  void item.offsetWidth;
+  item.classList.add('flash');
+}
+
+const GAP_LABEL = '記録漏れ？';
+
+function renderTable(r) {
+  const body = $('cycleTable');
+  body.replaceChildren();
+  const gaps = new Set(r?.gaps);
+  const rows = [];
+  periods.forEach((p, i) => {
+    const s = toDay(p.start);
+    const nextStart = periods[i + 1] ? toDay(periods[i + 1].start) : null;
+    const ovu = s + OVULATION_DAY - 1;
+    rows.push({
+      start: p.start,
+      startText: md(p.start),
+      days: p.end ? `${toDay(p.end) - s + 1}日` : '継続中',
+      cycle: nextStart != null ? `${nextStart - s}日` : `今${toDay(today()) - s + 1}日目`,
+      ovulation: nextStart == null || ovu < nextStart ? md(fromDay(ovu)) : '—',
+      flow: FLOW_LABEL[p.flow] ?? '',
+      gap: gaps.has(p.start),
+    });
+  });
+  if (r) {
+    r.next.forEach((n, i) => {
+      const following = r.next[i + 1];
+      rows.push({
+        start: n.center,
+        startText: `${md(n.center)}ごろ`,
+        sub: `${md(n.earliest)}〜${md(n.latest)}`,
+        days: `${n.length}日`,
+        cycle: following ? `${toDay(following.center) - toDay(n.center)}日` : '—',
+        ovulation: md(fromDay(toDay(n.center) + OVULATION_DAY - 1)),
+        flow: '—',
+        predicted: true,
+      });
+    });
+  }
+  if (!rows.length) {
+    body.append(el('tr', {}, [el('td', { colSpan: 5, className: 'small', textContent: 'まだ記録がありません。' })]));
+    return;
+  }
+  // 新しい順。年が変わるところに見出しの行を入れる
+  let year = null;
+  for (const row of rows.reverse()) {
+    const y = row.start.slice(0, 4);
+    if (y !== year) {
+      year = y;
+      body.append(el('tr', { className: 'year' }, [el('th', { colSpan: 5, textContent: `${y}年` })]));
+    }
+    const startCell = el('td', {}, [el('div', { textContent: row.startText })]);
+    if (row.predicted) startCell.prepend(el('span', { className: 'tag', textContent: '予定' }));
+    if (row.sub) startCell.append(el('div', { className: 'small', textContent: row.sub }));
+    const cycleCell = el('td', {}, [el('div', { textContent: row.cycle })]);
+    if (row.gap) cycleCell.append(el('span', { className: 'tag tag-gap', textContent: GAP_LABEL }));
+    body.append(el('tr', { className: row.predicted ? 'predicted-row' : '' }, [
+      startCell,
+      el('td', { textContent: row.days }),
+      cycleCell,
+      el('td', { textContent: row.ovulation }),
+      el('td', { textContent: row.flow }),
+    ]));
+  }
+}
+
+function setView(v) {
+  view = v;
+  $('calView').hidden = v !== 'cal';
+  $('tableView').hidden = v !== 'table';
+  $('viewCal').classList.toggle('active', v === 'cal');
+  $('viewTable').classList.toggle('active', v === 'table');
+  $('viewCal').setAttribute('aria-selected', String(v === 'cal'));
+  $('viewTable').setAttribute('aria-selected', String(v === 'table'));
+}
+
+function renderQuickActions() {
+  const box = $('quickActions');
+  box.replaceChildren();
+  const open = openPeriod();
+  const t = today();
+  if (open) {
+    box.append(el('button', { type: 'button', textContent: '今日終わった', onclick: () => save({ ...open, end: t }) }));
+  } else if (!periods.some(p => p.start === t)) {
+    box.append(el('button', { type: 'button', textContent: '今日始まった', onclick: () => save({ start: t, flow: 'normal' }) }));
+  }
+}
+
+function renderHistory(r) {
+  const list = $('history');
+  list.replaceChildren();
+  if (!periods.length) {
+    list.append(el('li', { className: 'small', textContent: 'まだ記録がありません。' }));
+    return;
+  }
+  const gaps = new Set(r?.gaps);
+  const rows = [...periods].reverse();
+  rows.forEach((p, i) => {
+    const prev = rows[i + 1];
+    const days = p.end ? `${toDay(p.end) - toDay(p.start) + 1}日間` : '継続中';
+    const cycle = prev ? `・周期${toDay(p.start) - toDay(prev.start)}日` : '';
+    const detail = el('div', { className: 'small', textContent: `${days}・${FLOW_LABEL[p.flow] ?? ''}${cycle}` });
+    // 一覧の周期は「前回の開始日から」なので、前回の開始日で判定する
+    if (prev && gaps.has(prev.start)) detail.append(el('span', { className: 'tag tag-gap', textContent: GAP_LABEL }));
+    list.append(el('li', {}, [
+      el('div', {}, [
+        el('div', { textContent: `${ymd(p.start)}${p.end ? ` 〜 ${md(p.end)}` : ''}` }),
+        detail,
+      ]),
+      el('div', { className: 'row' }, [
+        el('button', { type: 'button', textContent: '直す', onclick: () => startEdit(p) }),
+        el('button', { type: 'button', textContent: '消す', onclick: () => remove(p) }),
+      ]),
+    ]));
+  });
+}
+
+// 表示中の月の体調メモを全文で並べる（カレンダー下の「続き」から飛んでくる先）
+function renderNotes() {
+  const [y, m] = viewMonth.split('-').map(Number);
+  $('notesTitle').textContent = `${y}年${m}月の体調メモ`;
+  const list = $('notesList');
+  list.replaceChildren();
+  const dates = monthDates();
+  if (!dates.length) {
+    list.append(el('li', { className: 'small', textContent: 'この月のメモはありません。カレンダーの日付を押すと書けます。' }));
+    return;
+  }
+  for (const date of dates) {
+    list.append(el('li', { id: `note-${date}` }, [
+      el('div', { className: 'note-row' }, [
+        el('div', { textContent: `${Number(date.slice(8))}日（${weekday(date)}）` }),
+        el('div', { className: 'small note-full', textContent: notes.get(date) }),
+      ]),
+      el('button', { type: 'button', textContent: '開く', onclick: () => openDay(date) }),
+    ]));
+  }
+}
+
+// ---- その日の画面（体調メモ） ----
+
+function dayInfo(date) {
+  const cls = dayMarks(predict(periods, today())).get(toDay(date)) ?? new Set();
+  const parts = [];
+  const d = toDay(date);
+  const last = [...periods].reverse().find(p => toDay(p.start) <= d);
+  if (last) parts.push(`周期の${d - toDay(last.start) + 1}日目`);
+  if (cls.has('period')) parts.push('生理（記録）');
+  else if (cls.has('predicted')) parts.push('生理の予定');
+  else if (cls.has('range')) parts.push('始まる可能性の幅');
+  if (cls.has('ovulation')) parts.push('排卵日の目安');
+  return parts.join('・');
+}
+
+function openDay(date) {
+  $('dayTitle').textContent = ymd(date);
+  $('dayInfo').textContent = dayInfo(date);
+  $('noteInput').value = notes.get(date) ?? '';
+  // 未来の日やすでに開始日の日は、開始日にできない
+  $('dayStartBtn').hidden = date > today() || periods.some(p => p.start === date);
+  const dialog = $('dayDialog');
+  dialog.returnValue = '';
+  dialog.addEventListener('close', async () => {
+    if (dialog.returnValue === 'save') {
+      await saveNote(date, $('noteInput').value);
+    } else if (dialog.returnValue === 'start') {
+      startNew(date);
+    }
+  }, { once: true });
+  dialog.showModal();
+}
+
+async function saveNote(date, text) {
+  const value = text.trim();
+  if (value) await db.putNote({ date, text: value });
+  else await db.deleteNote(date);
+  await load();
+}
+
+async function renderBackupInfo() {
+  const last = await db.getMeta('lastBackup');
+  $('lastBackup').textContent = last ? `前回の書き出し：${ymd(last)}` : 'まだ書き出していません。';
+  const remind = $('backupReminder');
+  const stale = !last || toDay(today()) - toDay(last) >= BACKUP_REMIND_DAYS;
+  remind.hidden = !(periods.length && stale);
+  remind.textContent = last
+    ? `前回のバックアップから${toDay(today()) - toDay(last)}日たちました。下の「書き出す」から保存しておくと安心です。`
+    : 'まだバックアップがありません。スマホのデータが消えたときのために、下の「書き出す」から保存しておくと安心です。';
+}
+
+// ---- 記録の入力 ----
+
+function startNew(start, scroll = true) {
+  editingId = null;
+  $('formTitle').textContent = '記録する';
+  $('startInput').value = start;
+  $('endInput').value = '';
+  $('flowInput').value = 'normal';
+  $('cancelEdit').hidden = true;
+  $('formError').hidden = true;
+  if (scroll) $('periodForm').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function startEdit(p) {
+  editingId = p.id;
+  $('formTitle').textContent = `${ymd(p.start)} の記録を直す`;
+  $('startInput').value = p.start;
+  $('endInput').value = p.end ?? '';
+  $('flowInput').value = p.flow ?? 'normal';
+  $('cancelEdit').hidden = false;
+  $('formError').hidden = true;
+  $('periodForm').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function validate(p) {
+  const t = today();
+  if (p.start > t) return '始まった日が未来になっています。';
+  if (p.end && p.end < p.start) return '終わった日が、始まった日より前になっています。';
+  if (p.end && p.end > t) return '終わった日が未来になっています。';
+  if (p.end && toDay(p.end) - toDay(p.start) + 1 > 14) return '14日を超えています。日付を確かめてください。';
+  const s = toDay(p.start);
+  const e = p.end ? toDay(p.end) : s;
+  for (const o of periods) {
+    if (o.id === p.id) continue;
+    const os = toDay(o.start);
+    const oe = o.end ? toDay(o.end) : os;
+    if (s <= oe && os <= e) return `${ymd(o.start)} の記録と日付が重なっています。`;
+  }
+  return null;
+}
+
+async function save(p) {
+  const error = validate(p);
+  if (error) {
+    $('formError').textContent = error;
+    $('formError').hidden = false;
+    return false;
+  }
+  await db.putPeriod(p);
+  await load();
+  return true;
+}
+
+async function remove(p) {
+  if (!confirm(`${ymd(p.start)} の記録を消しますか？`)) return;
+  await db.deletePeriod(p.id);
+  if (editingId === p.id) startNew(today(), false);
+  await load();
+}
+
+$('periodForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const p = {
+    start: $('startInput').value,
+    end: $('endInput').value || null,
+    flow: $('flowInput').value,
+  };
+  if (editingId != null) p.id = editingId;
+  if (await save(p)) startNew(today(), false);
+});
+
+$('cancelEdit').addEventListener('click', () => startNew(today(), false));
+
+$('viewCal').addEventListener('click', () => { setView('cal'); db.setMeta('view', 'cal'); });
+$('viewTable').addEventListener('click', () => { setView('table'); db.setMeta('view', 'table'); });
+
+$('prevMonth').addEventListener('click', () => shiftMonth(-1));
+$('nextMonth').addEventListener('click', () => shiftMonth(1));
+
+function shiftMonth(delta) {
+  const [y, m] = viewMonth.split('-').map(Number);
+  const d = new Date(Date.UTC(y, m - 1 + delta, 1));
+  viewMonth = d.toISOString().slice(0, 10);
+  renderCalendar(predict(periods, today()));
+  renderNotes();
+}
+
+// ---- バックアップ ----
+
+function askPassphrase({ title, help, confirmTwice }) {
+  const dialog = $('passDialog');
+  $('passTitle').textContent = title;
+  $('passHelp').textContent = help;
+  $('pass1').value = '';
+  $('pass2').value = '';
+  $('pass2Label').hidden = !confirmTwice;
+  $('passError').hidden = true;
+
+  return new Promise(resolve => {
+    const form = $('passForm');
+    const onSubmit = e => {
+      if (e.submitter?.value !== 'ok') return;
+      const p1 = $('pass1').value;
+      let error = null;
+      if (confirmTwice && p1.length < MIN_PASS) error = `合言葉は${MIN_PASS}文字以上にしてください。`;
+      else if (confirmTwice && p1 !== $('pass2').value) error = '2回の入力が一致しません。';
+      else if (!p1) error = '合言葉を入れてください。';
+      if (error) {
+        e.preventDefault();
+        $('passError').textContent = error;
+        $('passError').hidden = false;
+      }
+    };
+    form.addEventListener('submit', onSubmit);
+    dialog.addEventListener('close', () => {
+      form.removeEventListener('submit', onSubmit);
+      const value = dialog.returnValue === 'ok' ? $('pass1').value : null;
+      $('pass1').value = '';
+      $('pass2').value = '';
+      resolve(value);
+    }, { once: true });
+    dialog.returnValue = '';
+    dialog.showModal();
+    $('pass1').focus();
+  });
+}
+
+async function busy(button, label, fn) {
+  const old = button.textContent;
+  button.disabled = true;
+  button.textContent = label;
+  try {
+    await fn();
+  } finally {
+    button.disabled = false;
+    button.textContent = old;
+  }
+}
+
+$('exportBtn').addEventListener('click', async () => {
+  if (!periods.length && !notes.size) {
+    alert('まだ記録がありません。');
+    return;
+  }
+  const pass = await askPassphrase({
+    title: 'バックアップを書き出す',
+    help: `合言葉を決めてください（${MIN_PASS}文字以上）。読み込むときに必要です。忘れると誰にも元に戻せません。`,
+    confirmTwice: true,
+  });
+  if (!pass) return;
+  await busy($('exportBtn'), '暗号化中…', async () => {
+    const data = {
+      app: 'cycle-app',
+      exportedAt: today(),
+      periods: periods.map(({ id, ...p }) => p),
+      notes: [...notes].map(([date, text]) => ({ date, text })),
+    };
+    const text = await encryptBackup(data, pass);
+    const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+    const a = el('a', { href: url, download: `cycle-backup-${today().replaceAll('-', '')}.json` });
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    await db.setMeta('lastBackup', today());
+    await renderBackupInfo();
+  });
+});
+
+$('importBtn').addEventListener('click', () => $('importFile').click());
+
+$('importFile').addEventListener('change', async () => {
+  const file = $('importFile').files[0];
+  $('importFile').value = '';
+  if (!file) return;
+  const pass = await askPassphrase({
+    title: 'バックアップを読み込む',
+    help: '書き出したときの合言葉を入れてください。',
+    confirmTwice: false,
+  });
+  if (!pass) return;
+  await busy($('importBtn'), '復号中…', async () => {
+    let data;
+    try {
+      data = await decryptBackup(await file.text(), pass);
+    } catch (err) {
+      alert(err.message);
+      return;
+    }
+    const incoming = cleanImported(data);
+    if (!incoming) {
+      alert('このアプリのバックアップではありません。');
+      return;
+    }
+    const count = (p, n) => `生理の記録${p}件・体調メモ${n}件`;
+    const msg = periods.length || notes.size
+      ? `今の${count(periods.length, notes.size)}を、ファイルの${count(incoming.periods.length, incoming.notes.length)}に置き換えます。よろしいですか？`
+      : `ファイルの${count(incoming.periods.length, incoming.notes.length)}を読み込みます。よろしいですか？`;
+    if (!confirm(msg)) return;
+    await db.replacePeriods(incoming.periods);
+    await db.replaceNotes(incoming.notes);
+    await load();
+  });
+});
+
+function cleanImported(data) {
+  if (data?.app !== 'cycle-app' || !Array.isArray(data.periods)) return null;
+  const isDate = s => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
+  const rows = [];
+  for (const p of data.periods) {
+    if (!isDate(p.start) || (p.end != null && !isDate(p.end))) return null;
+    rows.push({ start: p.start, end: p.end ?? null, flow: FLOW_LABEL[p.flow] ? p.flow : 'normal' });
+  }
+  // メモを入れる前に書き出したファイルには notes がない
+  const noteRows = [];
+  for (const n of data.notes ?? []) {
+    if (!isDate(n.date) || typeof n.text !== 'string') return null;
+    noteRows.push({ date: n.date, text: n.text });
+  }
+  return { periods: rows, notes: noteRows };
+}
+
+// ---- 起動 ----
+
+async function init() {
+  viewMonth = today().slice(0, 8) + '01';
+  startNew(today(), false);
+  setView((await db.getMeta('view')) ?? 'cal');
+  // ブラウザが空き容量の都合でデータを消さないよう頼む（認められるかはブラウザ次第）
+  navigator.storage?.persist?.();
+  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+    navigator.serviceWorker.register('sw.js');
+  }
+  await load();
+}
+
+init();
