@@ -1,5 +1,5 @@
 // オフラインでも開けるよう、アプリの画面と計算のファイルだけを保存する（記録は含まない）
-const CACHE = 'cycle-app-v6';
+const CACHE = 'cycle-app-v29';
 const FILES = ['./', 'index.html', 'style.css', 'app.js', 'predict.js', 'backup.js', 'db.js', 'manifest.json', 'icon-192.png', 'icon-512.png', 'icon-maskable-192.png', 'icon-maskable-512.png'];
 
 self.addEventListener('install', e => {
@@ -17,8 +17,11 @@ self.addEventListener('activate', e => {
 // つながるときは最新を取りに行き、つながらないときは保存しておいたものを使う
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
+  // ブラウザの一時保存（HTTP キャッシュ）の古いファイルを使わないよう、毎回サーバーに確かめる
+  const url = new URL(e.request.url);
+  const req = url.origin === location.origin ? fetch(url, { cache: 'no-cache' }) : fetch(e.request);
   e.respondWith(
-    fetch(e.request)
+    req
       .then(res => {
         const copy = res.clone();
         caches.open(CACHE).then(c => c.put(e.request, copy));

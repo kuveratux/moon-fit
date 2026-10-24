@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#c2185b">
+  <meta name="theme-color" content="#3d4a7a">
   <title>Moon fit.</title>
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="icon-192.png" type="image/png">
@@ -11,95 +11,149 @@
 </head>
 <body>
   <header>
-    <h1>Moon fit.</h1>
+    <h1><img src="icon-192.png" alt="" class="header-icon">Moon fit.</h1>
   </header>
 
   <main>
-    <section id="summary" class="card"></section>
+    <!-- 生理管理：サマリー・カレンダー／表・記録の入力 -->
+    <div id="page-period" class="page" hidden>
+      <section id="summary" class="card summary"></section>
+      <div id="backupReminder" class="notice" hidden></div>
 
-    <div id="backupReminder" class="notice" hidden></div>
-
-    <section class="card">
-      <div class="tabs" role="tablist">
-        <button type="button" id="viewCal" role="tab">カレンダー</button>
-        <button type="button" id="viewTable" role="tab">表</button>
-      </div>
-
-      <div id="calView">
-        <div class="cal-head">
-          <button id="prevMonth" class="icon-btn" aria-label="前の月">‹</button>
-          <h2 id="monthLabel"></h2>
-          <button id="nextMonth" class="icon-btn" aria-label="次の月">›</button>
+      <section class="card">
+        <div class="tabs" role="tablist">
+          <button type="button" id="viewCal" role="tab">カレンダー</button>
+          <button type="button" id="viewTable" role="tab">表</button>
         </div>
-        <div id="calendar" class="calendar"></div>
-        <ul class="legend">
-          <li><span class="sw sw-period"></span>記録した生理</li>
-          <li><span class="sw sw-predicted"></span>予定（生理）</li>
-          <li><span class="sw sw-range"></span>始まる可能性の幅</li>
-          <li><span class="mk mk-ovulation">✦</span>排卵日の目安</li>
-          <li><span class="mk mk-note"></span>体調メモあり</li>
-        </ul>
-        <p class="small">日付を押すと、その日の体調メモを書けます。</p>
-        <div id="monthNotes" class="month-notes"></div>
-      </div>
 
-      <div id="tableView" hidden>
-        <div class="table-wrap">
-          <table class="cycle-table">
-            <thead>
-              <tr><th>開始日</th><th>日数</th><th>周期</th><th>排卵日の目安</th><th>量</th></tr>
-            </thead>
-            <tbody id="cycleTable"></tbody>
-          </table>
+        <div id="calView">
+          <div class="cal-head">
+            <button id="prevMonth" class="icon-btn" aria-label="前の月">‹</button>
+            <div class="cal-title">
+              <h2 id="monthLabel"></h2>
+              <button type="button" id="legendBtn" class="help-btn" aria-label="印の見かた">?</button>
+            </div>
+            <button id="nextMonth" class="icon-btn" aria-label="次の月">›</button>
+          </div>
+          <div id="calendar" class="calendar"></div>
+          <div id="monthNotes" class="month-notes"></div>
         </div>
-        <p class="small">周期は、その開始日から次の開始日までの日数です。</p>
-      </div>
-    </section>
 
-    <section class="card">
-      <h2 id="formTitle">記録する</h2>
-      <form id="periodForm">
-        <label>始まった日<input type="date" id="startInput" required></label>
-        <label>終わった日（まだなら空のまま）<input type="date" id="endInput"></label>
-        <label>量
-          <select id="flowInput">
-            <option value="light">少なめ</option>
-            <option value="normal" selected>ふつう</option>
-            <option value="heavy">多め</option>
-          </select>
+        <div id="tableView" hidden>
+          <div class="table-wrap">
+            <table class="cycle-table">
+              <thead>
+                <tr><th>開始日</th><th>日数</th><th>周期</th><th>排卵日の目安</th><th>量</th></tr>
+              </thead>
+              <tbody id="cycleTable"></tbody>
+            </table>
+          </div>
+          <p class="small">周期は、その開始日から次の開始日までの日数です。</p>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2 id="formTitle">記録する</h2>
+        <form id="periodForm">
+          <label>始まった日<input type="date" id="startInput" required></label>
+          <label>終わった日（まだなら空のまま）<input type="date" id="endInput"></label>
+          <label>量
+            <select id="flowInput">
+              <option value="light">少なめ</option>
+              <option value="normal" selected>ふつう</option>
+              <option value="heavy">多め</option>
+            </select>
+          </label>
+          <p id="formError" class="error" hidden></p>
+          <div class="row">
+            <button type="submit" class="primary">保存</button>
+            <button type="button" id="cancelEdit" hidden>やめる</button>
+          </div>
+        </form>
+        <div id="quickActions" class="row"></div>
+      </section>
+      <p class="small disclaimer">予測は記録からの目安です。</p>
+    </div>
+
+    <!-- 体調管理：メモの一覧と検索 -->
+    <div id="page-health" class="page" hidden>
+      <section class="card">
+        <label class="search">
+          <input type="search" id="noteSearch" placeholder="体調メモを検索" autocomplete="off">
         </label>
-        <p id="formError" class="error" hidden></p>
-        <div class="row">
-          <button type="submit" class="primary">保存</button>
-          <button type="button" id="cancelEdit" hidden>やめる</button>
+        <div id="notesMonthHead" class="cal-head">
+          <button id="notesPrev" class="icon-btn" aria-label="前の月">‹</button>
+          <h2 id="notesTitle"></h2>
+          <button id="notesNext" class="icon-btn" aria-label="次の月">›</button>
         </div>
-      </form>
-      <div id="quickActions" class="row"></div>
-    </section>
+        <p id="searchInfo" class="small" hidden></p>
+        <ul id="notesList" class="history"></ul>
+      </section>
+    </div>
 
-    <section class="card">
-      <h2>これまでの記録</h2>
-      <ul id="history" class="history"></ul>
-    </section>
+    <!-- 設定 -->
+    <div id="page-settings" class="page" hidden>
+      <section class="card">
+        <button type="button" id="openRecords" class="menu-item">
+          <span>これまでの記録</span><span class="chev">›</span>
+        </button>
+      </section>
 
-    <section class="card">
-      <h2 id="notesTitle">体調メモ</h2>
-      <ul id="notesList" class="history"></ul>
-    </section>
+      <section class="card">
+        <h2>バックアップ</h2>
+        <p class="small">記録は暗号化してファイルに書き出します。読み込みには書き出したときの合言葉が必要です。<strong>合言葉を忘れると、誰にも元に戻せません。</strong></p>
+        <div class="row">
+          <button id="exportBtn">書き出す</button>
+          <button id="importBtn">読み込む</button>
+          <input type="file" id="importFile" accept=".json,application/json" hidden>
+        </div>
+        <p id="lastBackup" class="small"></p>
+      </section>
+    </div>
 
-    <section class="card">
-      <h2>バックアップ</h2>
-      <p class="small">記録は暗号化してファイルに書き出します。読み込みには書き出したときの合言葉が必要です。<strong>合言葉を忘れると、誰にも元に戻せません。</strong></p>
-      <div class="row">
-        <button id="exportBtn">書き出す</button>
-        <button id="importBtn">読み込む</button>
-        <input type="file" id="importFile" accept=".json,application/json" hidden>
+    <!-- 設定 → これまでの記録 -->
+    <div id="page-records" class="page" hidden>
+      <div class="page-head">
+        <button type="button" id="backToSettings" class="icon-btn" aria-label="設定にもどる">‹</button>
+        <h2>これまでの記録</h2>
       </div>
-      <p id="lastBackup" class="small"></p>
-    </section>
-
-    <p class="small disclaimer">予測は記録からの目安です。</p>
+      <section class="card">
+        <ul id="history" class="history"></ul>
+      </section>
+    </div>
   </main>
+
+  <nav class="footer-nav" aria-label="メニュー">
+    <a href="#period" data-page="period">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 9.5h17M8 3v4M16 3v4"/></svg>
+      <span>生理管理</span>
+    </a>
+    <a href="#health" data-page="health">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3.5" width="14" height="17" rx="2"/><path d="M8.5 8.5h7M8.5 12h7M8.5 15.5h4"/></svg>
+      <span>体調管理</span>
+    </a>
+    <a href="#settings" data-page="settings">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/></svg>
+      <span>設定</span>
+    </a>
+  </nav>
+
+  <dialog id="legendDialog">
+    <form method="dialog">
+      <h2>印の見かた</h2>
+      <ul class="legend">
+        <li><span class="sw sw-period"></span>生理（記録）</li>
+        <li><span class="sw sw-predicted"></span>生理（予定）</li>
+        <li><span class="sw sw-range"></span>開始予測</li>
+        <li><span class="sw sw-ovulation"></span>排卵日の目安</li>
+        <li><span class="mk mk-note"></span>体調メモあり</li>
+        <li><span class="sw sw-today"></span>今日</li>
+      </ul>
+      <div class="row">
+        <button type="submit" class="primary">閉じる</button>
+      </div>
+    </form>
+  </dialog>
 
   <dialog id="passDialog">
     <form method="dialog" id="passForm">

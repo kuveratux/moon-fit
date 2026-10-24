@@ -10,6 +10,7 @@
   --range: #b0477a;
   --ovulation: #2e7d6b;
   --note: #6d5bd0;
+  --summary-bg: #fbe9f0;
   --notice-bg: #fff4e0;
   --notice-text: #6b4a00;
   --error: #c62828;
@@ -28,6 +29,7 @@
     --range: #f48fb1;
     --ovulation: #7fd8c0;
     --note: #b3a6ff;
+    --summary-bg: #33222a;
     --notice-bg: #3a2e14;
     --notice-text: #f5d58a;
     --error: #ef9a9a;
@@ -46,13 +48,15 @@ body {
   line-height: 1.6;
 }
 
+/* ヘッダーはアイコンの背景と同じ紺（明るい画面・暗い画面とも） */
 header {
-  padding: 12px 16px;
-  background: var(--accent);
+  padding: 10px 16px;
+  background: #3d4a7a;
   color: #fff;
 }
 
-header h1 { margin: 0; font-size: 1.15rem; }
+header h1 { margin: 0; font-size: 1.15rem; display: flex; align-items: center; gap: 10px; }
+.header-icon { width: 36px; height: 36px; border-radius: 8px; display: block; }
 
 main {
   max-width: 560px;
@@ -124,43 +128,60 @@ input, select {
 .cal-head h2 { margin: 0; }
 .icon-btn { padding: 4px 14px; font-size: 1.2rem; }
 
-.calendar { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
-.wd { text-align: center; font-size: 0.75rem; color: var(--muted); }
+.calendar { display: grid; grid-template-columns: repeat(7, 1fr); border-bottom: 1px solid var(--line); }
+.wd { text-align: center; font-size: 0.75rem; color: var(--muted); padding-bottom: 4px; }
+/* 週の境目がわかるよう、各マスの上に薄い横線（マスどうしのすき間をなくして線をつなげる） */
+.calendar .day, .calendar .blank { border-top: 1px solid var(--line); }
 
 .day {
   aspect-ratio: 1;
-  padding: 0;
-  border-radius: 50%;
-  border: 2px solid transparent;
+  border: none;
+  border-radius: 0;
   background: transparent;
   font-size: 0.9rem;
+  display: flex;
+  align-items: flex-start;
+  /* 今日の四角い枠と丸が重ならないよう、上を少しあける */
+  padding: 6px 0 0;
+  justify-content: center;
+  position: relative;
 }
 
-.day.range { border-color: var(--range); border-style: dashed; }
-.day.predicted { background: var(--predicted); }
-.day.period { background: var(--period); color: #fff; }
-.day.today { font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
-.day { position: relative; }
-.day.ovulation::before {
-  content: '✦';
-  position: absolute;
-  top: -2px;
-  right: 0;
-  font-size: 0.7rem;
-  color: var(--ovulation);
+/* 生理・予定・幅の印は、日付を包む丸（マス目の約46%）に付ける（マス目の大きさが変わっても同じ割合） */
+.day .num {
+  width: 46%;
+  aspect-ratio: 1;
+  /* 数字の行の高さで丸が縦に伸びないようにする */
+  line-height: 1;
+  min-height: 0;
+  flex: none;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
+.day.range .num { border-color: var(--range); border-style: dashed; }
+.day.predicted .num { background: var(--predicted); }
+.day.ovulation .num { background: var(--ovulation); color: var(--bg); }
+.day.period .num { background: var(--period); color: #fff; }
+/* 今日はマスを四角で囲む */
+.day.today { border-radius: 8px; box-shadow: inset 0 0 0 2px var(--muted); }
+.day.today .num { font-weight: 700; }
 .day.note::after {
+  /* 体調メモがある日は、日付の下にレ点（端末の書体に左右されないよう線で描く） */
   content: '';
   position: absolute;
-  bottom: 3px;
+  /* 丸（上の余白6px＋マス幅の46%）のすぐ下に置く */
+  top: calc(46% + 9px);
   left: 50%;
-  width: 5px;
-  height: 5px;
-  margin-left: -2.5px;
-  border-radius: 50%;
-  background: var(--note);
+  width: 4px;
+  height: 9px;
+  border-right: 3px solid var(--note);
+  border-bottom: 3px solid var(--note);
+  border-radius: 1px;
+  transform: translateX(-50%) rotate(40deg);
 }
-.day.period.note::after { background: #fff; }
 
 .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; list-style: none; padding: 0; margin: 10px 0 0; font-size: 0.8rem; color: var(--muted); }
 .sw { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; }
@@ -168,8 +189,9 @@ input, select {
 .sw-predicted { background: var(--predicted); }
 .sw-range { border: 2px dashed var(--range); }
 .mk { display: inline-block; width: 12px; margin-right: 4px; text-align: center; }
-.mk-ovulation { color: var(--ovulation); font-size: 0.75rem; }
-.mk-note::before { content: ''; display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: var(--note); vertical-align: 2px; }
+.sw-ovulation { background: var(--ovulation); }
+.mk-note::before { content: ''; display: inline-block; width: 4px; height: 8px; border-right: 2.5px solid var(--note); border-bottom: 2.5px solid var(--note); transform: rotate(40deg); vertical-align: 1px; margin-left: 3px; }
+.sw-today { border-radius: 3px; box-shadow: inset 0 0 0 2px var(--muted); }
 
 .note-row { min-width: 0; }
 .day-extra { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
@@ -235,3 +257,88 @@ dialog::backdrop { background: rgb(0 0 0 / 0.4); }
 .tag { display: inline-block; font-size: 0.68rem; padding: 0 5px; margin-right: 4px; border-radius: 4px; background: var(--predicted); color: var(--text); }
 .tag-gap { margin: 2px 0 0 4px; background: var(--notice-bg); color: var(--notice-text); }
 .history .tag-gap { margin-left: 6px; }
+
+/* ---- ページと下のメニュー ---- */
+main { padding-bottom: calc(84px + env(safe-area-inset-bottom)); }
+
+.footer-nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  justify-content: center;
+  background: var(--card);
+  border-top: 1px solid var(--line);
+  padding-bottom: env(safe-area-inset-bottom);
+  z-index: 10;
+}
+.footer-nav a {
+  flex: 1;
+  max-width: 140px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 0 6px;
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 0.7rem;
+}
+.footer-nav svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.footer-nav a.active { color: var(--accent); font-weight: 700; }
+
+.page-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.page-head h2 { margin: 0; }
+
+.menu-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  border: none;
+  padding: 6px 0;
+  background: transparent;
+  font-size: 1rem;
+}
+.menu-item .chev { color: var(--muted); font-size: 1.3rem; }
+
+/* ---- 生理管理の先頭のサマリー ---- */
+.summary { padding: 0; overflow: hidden; }
+.summary-top { display: flex; }
+.summary-main { flex: 1.6; padding: 16px 12px 14px; text-align: center; background: var(--summary-bg); }
+.summary-side { flex: 1; padding: 16px 8px 14px; text-align: center; border-left: 1px solid var(--line); display: flex; flex-direction: column; justify-content: center; }
+.summary-label { font-size: 0.85rem; color: var(--muted); }
+.summary-date { font-size: 2.4rem; font-weight: 700; line-height: 1.2; margin: 4px 0; }
+.summary-date.small-date { font-size: 1.6rem; margin-bottom: 0; }
+.summary-wd { font-size: 0.85rem; font-weight: 400; }
+.summary-badge { display: inline-block; margin: 4px 0 8px; padding: 2px 18px; border-radius: 999px; background: var(--card); border: 1px solid var(--line); font-size: 0.9rem; }
+.summary-badge { font-weight: 700; }
+.summary-range { font-size: 0.8rem; color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+.summary-stats { display: flex; border-top: 1px solid var(--line); }
+.summary-stats > div { flex: 1; text-align: center; padding: 10px 0; font-size: 0.9rem; color: var(--muted); }
+.summary-stats > div + div { border-left: 1px solid var(--line); }
+.summary-stats strong { color: var(--accent); font-size: 1.15rem; margin: 0 2px; }
+.summary .big { padding: 16px 16px 0; }
+.summary .row { padding: 0 16px 16px; }
+
+/* ---- 凡例を開く「?」 ---- */
+.cal-title { display: flex; align-items: center; gap: 6px; }
+.help-btn {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1.5px solid var(--muted);
+  color: var(--muted);
+  background: transparent;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1;
+}
+#legendDialog .legend { flex-direction: column; gap: 10px; font-size: 0.95rem; margin: 6px 0 16px; color: var(--text); }
+
+/* ---- 体調メモの検索 ---- */
+.search input { margin-top: 0; }
+#notesMonthHead { margin-top: 4px; }
+mark { background: var(--notice-bg); color: var(--notice-text); padding: 0 1px; border-radius: 2px; }
