@@ -300,6 +300,8 @@ main { padding-bottom: calc(84px + env(safe-area-inset-bottom)); }
 
 /* ---- スワイプで移る先を示す矢印（画面の端の中ほど。指の動きに合わせて現れ、移ると決まったら進む向きへ流れる。EARN VIEWER と同じ作り） ---- */
 body { overflow-x: hidden; }
+/* ページの上では、ブラウザに任せるのは縦のスクロールと拡大だけ。横向きに始まった動きではスクロールさせない（払う指が斜めに流れても縦に動かない） */
+main { touch-action: pan-y pinch-zoom; }
 .swipe-hint {
   position: fixed; top: 50%; z-index: 7; display: flex; flex-direction: column; align-items: center; gap: 2px;
   padding: 10px 8px; border-radius: 14px; background: rgba(61, 74, 122, .88); border: 1px solid rgba(255, 255, 255, .5);
