@@ -133,6 +133,9 @@ window.addEventListener('hashchange', () => showPage(currentPage()));
     if (!armed || !page) return;
     const mx = ev.touches[0].clientX - sx, my = ev.touches[0].clientY - sy;
     if (!mode) {
+      // 向きを決める前でも、縦より横に動いているあいだは縦のスクロールを始めさせない
+      // （Android の Chrome は最初のわずかな動きでスクロールを始め、始まると止められない。払う指が斜めに流れるとページが縦に動いてしまう）
+      if (Math.abs(mx) >= Math.abs(my)) ev.preventDefault();
       if (Math.abs(mx) < 10 && Math.abs(my) < 10) return;
       mode = Math.abs(mx) > Math.abs(my) * 1.5 ? 'x' : 'y'; // 最初の動きで、横（ページ移動）か縦（スクロール）かを決める
     }
