@@ -14,10 +14,14 @@
   --notice-bg: #fff4e0;
   --notice-text: #6b4a00;
   --error: #c62828;
+  /* 配色はいつも明るい色（設定の「配色」の標準）。端末がダークモードでも、ブラウザが勝手に暗くしないようにする */
+  color-scheme: only light;
 }
 
+/* 設定の「配色」で「端末の設定に合わせる」を選んだときだけ、ダークモードで暗い配色にする（html に data-theme="system"） */
+:root[data-theme="system"] { color-scheme: light dark; }
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root[data-theme="system"] {
     --bg: #1a1517;
     --card: #251e21;
     --text: #f2e9ec;
@@ -117,6 +121,9 @@ button:disabled { opacity: 0.6; }
 #quickActions { margin-top: 10px; }
 
 label { display: block; margin-bottom: 10px; font-size: 0.9rem; }
+/* 設定の選択肢（配色）：丸いボタンと文字を横に並べる */
+.choice label { display: flex; align-items: center; gap: 8px; }
+.choice input { display: inline-block; width: auto; margin: 0; flex: none; accent-color: var(--accent); }
 
 input, select {
   display: block;

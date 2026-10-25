@@ -854,6 +854,24 @@ async function init() {
   await load();
 }
 
+// ---- 配色（明るい配色＝標準／端末の設定に合わせる）。選んだものは端末のブラウザに覚える ----
+
+const THEME_KEY = 'moonfit-theme';
+function currentTheme() {
+  try { return localStorage.getItem(THEME_KEY) === 'system' ? 'system' : 'light'; } catch { return 'light'; }
+}
+function applyTheme(theme) {
+  if (theme === 'system') document.documentElement.dataset.theme = 'system';
+  else delete document.documentElement.dataset.theme;
+}
+for (const r of document.querySelectorAll('input[name=theme]')) {
+  r.checked = r.value === currentTheme();
+  r.addEventListener('change', () => {
+    try { localStorage.setItem(THEME_KEY, r.value); } catch { /* 覚えられなくても、今の画面には反映する */ }
+    applyTheme(r.value);
+  });
+}
+
 // ---- バージョンと更新（EARN VIEWER と同じ作り） ----
 
 function showStatus() {

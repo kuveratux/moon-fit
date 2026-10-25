@@ -8,6 +8,8 @@
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="icon-192.png" type="image/png">
   <link rel="stylesheet" href="style.css">
+  <!-- 配色の設定（「端末の設定に合わせる」のときだけ印を付ける）。画面が出る前に読んで、色がちらつかないようにする -->
+  <script>try { if (localStorage.getItem('moonfit-theme') === 'system') document.documentElement.dataset.theme = 'system'; } catch {}</script>
 </head>
 <body>
   <header>
@@ -111,6 +113,14 @@
           <input type="file" id="importFile" accept=".json,application/json" hidden>
         </div>
         <p id="lastBackup" class="small"></p>
+      </section>
+
+      <section class="card">
+        <h2>配色</h2>
+        <div class="choice">
+          <label><input type="radio" name="theme" value="light"> 明るい配色</label>
+          <label><input type="radio" name="theme" value="system"> 端末の設定に合わせる（ダークモードのときは暗い配色）</label>
+        </div>
       </section>
 
       <section class="card">
