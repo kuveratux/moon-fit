@@ -17,8 +17,8 @@
   <main>
     <!-- 生理管理：サマリー・カレンダー／表・記録の入力 -->
     <div id="page-period" class="page" hidden>
+      <div id="backupReminder" class="notice backup-notice" hidden></div>
       <section id="summary" class="card summary"></section>
-      <div id="backupReminder" class="notice" hidden></div>
 
       <section class="card">
         <div class="tabs" role="tablist">
@@ -99,7 +99,7 @@
         </button>
       </section>
 
-      <section class="card">
+      <section class="card" id="backupCard">
         <h2>バックアップ</h2>
         <p class="small">記録は暗号化してファイルに書き出します。読み込みには書き出したときの合言葉が必要です。<strong>合言葉を忘れると、誰にも元に戻せません。</strong></p>
         <div class="row">

@@ -210,6 +210,9 @@ textarea {
 }
 
 /* 記録の一覧 */
+.backup-notice { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 0; }
+.backup-notice a { color: inherit; font-weight: bold; white-space: nowrap; }
+.note-btns { flex: none; gap: 6px; }
 .history { list-style: none; padding: 0; margin: 0; }
 .history li { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); }
 .history li:last-child { border-bottom: none; }

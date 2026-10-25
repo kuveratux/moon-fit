@@ -398,8 +398,17 @@ function noteItem(date, query, withYear) {
       el('div', { textContent: label }),
       el('div', { className: 'small note-full' }, highlight(notes.get(date), query)),
     ]),
-    el('button', { type: 'button', textContent: '開く', onclick: () => openDay(date) }),
+    el('div', { className: 'row note-btns' }, [
+      el('button', { type: 'button', textContent: '開く', onclick: () => openDay(date) }),
+      el('button', { type: 'button', textContent: '消す', onclick: () => removeNote(date) }),
+    ]),
   ]);
+}
+
+async function removeNote(date) {
+  if (!confirm(`${ymd(date)} のメモを消しますか？`)) return;
+  await db.deleteNote(date);
+  await load();
 }
 
 function renderNotes() {
@@ -474,9 +483,16 @@ async function renderBackupInfo() {
   const remind = $('backupReminder');
   const stale = !last || toDay(today()) - toDay(last) >= BACKUP_REMIND_DAYS;
   remind.hidden = !(periods.length && stale);
-  remind.textContent = last
-    ? `前回のバックアップから${toDay(today()) - toDay(last)}日たちました。設定の「書き出す」から保存しておくと安心です。`
-    : 'まだバックアップがありません。スマホのデータが消えたときのために、設定の「書き出す」から保存しておくと安心です。';
+  remind.replaceChildren(
+    el('span', { textContent: last ? `前回のバックアップから${toDay(today()) - toDay(last)}日たちました` : 'まだバックアップがありません' }),
+    el('a', { href: '#settings', textContent: '設定へ ›', onclick: e => { e.preventDefault(); openBackupSettings(); } }),
+  );
+}
+
+// 設定のページに移って、バックアップの欄まで動かす
+function openBackupSettings() {
+  go('settings');
+  $('backupCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 // ---- 記録の入力 ----
