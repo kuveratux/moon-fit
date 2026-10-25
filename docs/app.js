@@ -303,6 +303,8 @@ function renderCalendar(r) {
 function selectDay(date, cell) {
   selectedDate = date;
   for (const c of $('calendar').querySelectorAll('.day')) c.classList.toggle('selected', c === cell);
+  // 「記録する」の始まった日も押した日にする（「直す」で記録を直している最中は変えない）
+  if (editingId == null) $('startInput').value = date;
   renderDaySelect();
 }
 
