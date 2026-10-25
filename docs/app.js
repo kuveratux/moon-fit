@@ -88,6 +88,83 @@ function go(name) {
 
 window.addEventListener('hashchange', () => showPage(currentPage()));
 
+// 横にスワイプすると隣のメニューへ（左へスワイプで右隣、右へで左隣。EARN VIEWER と同じ作り）
+// ページは指についてきて、離すと次のページが横から滑り込む（0.15 秒）。動かしている間は、移る先の側に矢印と行き先の名前を出す
+// 画面幅の 20% 未満でゆっくり離したときは元に戻る。両端のメニューでは重く動いて戻る
+// 入力欄・ダイアログ・下のメニュー・横にスクロールできる表の上と、「これまでの記録」のページでは動かさない
+(() => {
+  const SLIDE_MS = 150;
+  const MENU = ['period', 'health', 'settings'];
+  const hint = el('div', { className: 'swipe-hint' }, [el('span', { className: 'sh-arrow' }), el('span', { className: 'sh-name' })]);
+  document.body.append(hint);
+  const showHint = (dir, name, p) => { // dir：-1＝次（右端）、1＝前（左端）、p：0〜1
+    hint.classList.toggle('left', dir > 0); hint.classList.toggle('right', dir < 0);
+    hint.querySelector('.sh-arrow').textContent = dir < 0 ? '›' : '‹';
+    hint.querySelector('.sh-name').textContent = name;
+    hint.style.opacity = String(Math.min(1, p * 1.6));
+    hint.style.setProperty('--p', String(Math.min(1, p)));
+    hint.classList.toggle('ready', p >= 1);
+  };
+  const hideHint = goNext => {
+    hint.classList.remove('ready');
+    if (goNext) { hint.classList.add('go'); setTimeout(() => { hint.classList.remove('go'); hint.style.opacity = '0'; }, 260); }
+    else hint.style.opacity = '0';
+  };
+  let sx = 0, sy = 0, st = 0, armed = false, mode = '', dx = 0, page = null, busy = false;
+  const scrollsX = e => {
+    for (let n = e; n && n !== document.body; n = n.parentElement) {
+      if (n.scrollWidth > n.clientWidth + 1 && /(auto|scroll)/.test(getComputedStyle(n).overflowX)) return true;
+    }
+    return false;
+  };
+  const curIndex = () => MENU.indexOf(currentPage());
+  const menuName = i => document.querySelector(`.footer-nav a[data-page=${MENU[i]}] span`).textContent;
+  const move = (e, x, ms) => { e.style.transition = ms ? `transform ${ms}ms ease-out` : 'none'; e.style.transform = x ? `translateX(${x}px)` : ''; };
+  const after = ms => new Promise(r => setTimeout(r, ms + 20));
+  document.addEventListener('touchstart', ev => {
+    armed = false; mode = ''; dx = 0;
+    if (busy || ev.touches.length !== 1 || curIndex() < 0) return;
+    const t = ev.target;
+    if (t.closest('input, select, textarea, dialog, .footer-nav') || scrollsX(t)) return;
+    sx = ev.touches[0].clientX; sy = ev.touches[0].clientY; st = Date.now(); armed = true;
+    page = $(`page-${currentPage()}`);
+  }, { passive: true });
+  document.addEventListener('touchmove', ev => {
+    if (!armed || !page) return;
+    const mx = ev.touches[0].clientX - sx, my = ev.touches[0].clientY - sy;
+    if (!mode) {
+      if (Math.abs(mx) < 10 && Math.abs(my) < 10) return;
+      mode = Math.abs(mx) > Math.abs(my) * 1.5 ? 'x' : 'y'; // 最初の動きで、横（ページ移動）か縦（スクロール）かを決める
+    }
+    if (mode !== 'x') return;
+    ev.preventDefault(); // 横に動かしている間は、縦にスクロールさせない
+    const j = curIndex() + (mx < 0 ? 1 : -1);
+    const has = j >= 0 && j < MENU.length;
+    dx = has ? mx : mx / 4; // 端のメニューでは重く
+    move(page, dx, 0);
+    if (has) showHint(mx < 0 ? -1 : 1, menuName(j), Math.abs(dx) / (window.innerWidth * 0.2)); else hideHint(false);
+  }, { passive: false });
+  document.addEventListener('touchend', async () => {
+    if (!armed || mode !== 'x' || !page) { armed = false; return; }
+    armed = false;
+    const cur = page, w = window.innerWidth;
+    const j = curIndex() + (dx < 0 ? 1 : -1);
+    const fast = Math.abs(dx) > 25 && Date.now() - st < 300; // すばやく払ったときは短くても移る
+    if (j < 0 || j >= MENU.length || (Math.abs(dx) < w * 0.2 && !fast)) { hideHint(false); move(cur, 0, SLIDE_MS); await after(SLIDE_MS); move(cur, 0, 0); return; }
+    hideHint(true);
+    busy = true;
+    const dir = dx < 0 ? -1 : 1;
+    move(cur, dir * w, SLIDE_MS); // 今のページを外へ
+    await after(SLIDE_MS);
+    move(cur, 0, 0);
+    go(MENU[j]);
+    const next = $(`page-${MENU[j]}`);
+    move(next, -dir * w, 0); next.getBoundingClientRect(); move(next, 0, SLIDE_MS); await after(SLIDE_MS); move(next, 0, 0); // 次のページを反対側から
+    busy = false;
+  });
+  document.addEventListener('touchcancel', () => { if (armed && page) move(page, 0, SLIDE_MS); hideHint(false); armed = false; });
+})();
+
 // ---- 読み込みと描画 ----
 
 async function load() {

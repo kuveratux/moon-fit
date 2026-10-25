@@ -1,5 +1,5 @@
 // オフラインでも開けるよう、アプリの画面と計算のファイルだけを保存する（記録は含まない）
-const CACHE = 'cycle-app-v30';
+const CACHE = 'cycle-app-v31';
 const FILES = ['./', 'index.html', 'style.css', 'app.js', 'predict.js', 'backup.js', 'db.js', 'manifest.json', 'icon-192.png', 'icon-512.png', 'icon-maskable-192.png', 'icon-maskable-512.png'];
 
 self.addEventListener('install', e => {
