@@ -17,6 +17,7 @@ let periods = [];
 let notes = new Map();  // 日付 → メモの文
 let viewMonth;          // 生理管理のカレンダーで表示中の月の 1 日（'YYYY-MM-01'）
 let notesMonth;         // 体調管理で表示中の月の 1 日
+let selectedDate = null; // カレンダーで押した日（カーソル）。押すまではなし
 let editingId = null;
 let view = 'cal';       // 'cal' カレンダー / 'table' 表
 let shownPage = null;
@@ -290,10 +291,38 @@ function renderCalendar(r) {
       if (cls.has('period')) cls.delete('predicted');
       cell.classList.add(...cls);
     }
-    cell.addEventListener('click', () => openDay(fromDay(day)));
+    if (fromDay(day) === selectedDate) cell.classList.add('selected');
+    cell.addEventListener('click', () => selectDay(fromDay(day), cell));
     cal.append(cell);
   }
+  renderDaySelect();
   renderMonthNotes();
+}
+
+// 日付を押すと、その日にカーソルを付けて、カレンダーの下に「メモを入力」を出す（メモの画面はボタンで開く）
+function selectDay(date, cell) {
+  selectedDate = date;
+  for (const c of $('calendar').querySelectorAll('.day')) c.classList.toggle('selected', c === cell);
+  renderDaySelect();
+}
+
+function renderDaySelect() {
+  const box = $('daySelect');
+  // 押した日が表示中の月にないときは出さない
+  const shown = !!selectedDate && selectedDate.startsWith(viewMonth.slice(0, 8));
+  box.hidden = !shown;
+  if (!shown) return;
+  const date = selectedDate;
+  const [, m, d] = date.split('-').map(Number);
+  const info = dayInfo(date);
+  const memo = notes.get(date);
+  box.replaceChildren(
+    el('div', { className: 'ds-text' }, [
+      el('div', {}, [el('strong', { textContent: `${m}月${d}日（${weekday(date)}）` }), info ? el('span', { className: 'small', textContent: `　${info}` }) : '']),
+      el('div', { className: 'small ds-memo', textContent: memo ? memo.split('\n')[0] : 'メモはありません' }),
+    ]),
+    el('button', { type: 'button', id: 'daySelectBtn', className: 'primary', textContent: 'メモを入力', onclick: () => openDay(date) }),
+  );
 }
 
 const datesInMonth = month => [...notes.keys()].filter(d => d.startsWith(month.slice(0, 8))).sort();
@@ -816,7 +845,9 @@ async function init() {
   // ブラウザが空き容量の都合でデータを消さないよう頼む（認められるかはブラウザ次第）
   navigator.storage?.persist?.();
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
-    navigator.serviceWorker.register('sw.js').catch(console.error);
+    // 新しい版を探すときは、sw.js と version.js をブラウザの一時保存（公開サイトは最大 10 分）を通さずに取る
+    // （通すと、「新しいバージョンがあります」と出たのに古い version.js で比べて入れ替わらないことがある）
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch(console.error);
   }
   await load();
 }
