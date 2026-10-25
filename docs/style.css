@@ -302,6 +302,8 @@ main { padding-bottom: calc(84px + env(safe-area-inset-bottom)); }
 body { overflow-x: hidden; }
 /* ページの上では、ブラウザに任せるのは縦のスクロールと拡大だけ。横向きに始まった動きではスクロールさせない（払う指が斜めに流れても縦に動かない） */
 main { touch-action: pan-y pinch-zoom; }
+/* 払っている間に横へずれたページのはみ出しを切る。切らないと右へ払うときにスマホが表示の範囲を広げ、画面の真ん中に出す矢印が下にずれる */
+main { overflow-x: clip; }
 .swipe-hint {
   position: fixed; top: 50%; z-index: 7; display: flex; flex-direction: column; align-items: center; gap: 2px;
   padding: 10px 8px; border-radius: 14px; background: rgba(61, 74, 122, .88); border: 1px solid rgba(255, 255, 255, .5);
