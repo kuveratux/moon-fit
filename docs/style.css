@@ -53,7 +53,14 @@ header {
   padding: 10px 16px;
   background: #3d4a7a;
   color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
+/* ヘッダーの右側はアプリのバージョン（更新中は「更新中…」） */
+header .status { font-size: 0.75rem; opacity: 0.85; white-space: nowrap; }
+.update-note { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 
 header h1 { margin: 0; font-size: 1.15rem; display: flex; align-items: center; gap: 10px; }
 .header-icon { width: 36px; height: 36px; border-radius: 8px; display: block; }

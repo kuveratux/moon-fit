@@ -12,9 +12,11 @@
 <body>
   <header>
     <h1><img src="icon-192.png" alt="" class="header-icon">Moon fit.</h1>
+    <span id="status" class="status"></span>
   </header>
 
   <main>
+    <div id="updateNote" class="notice update-note" hidden>新しいバージョンがあります。<button type="button" id="reloadBtn" class="primary">更新する</button></div>
     <!-- 生理管理：サマリー・カレンダー／表・記録の入力 -->
     <div id="page-period" class="page" hidden>
       <div id="backupReminder" class="notice backup-notice" hidden></div>
@@ -109,6 +111,12 @@
         </div>
         <p id="lastBackup" class="small"></p>
       </section>
+
+      <section class="card">
+        <h2>アプリのバージョン</h2>
+        <p>バージョン：<b id="appVersion"></b></p>
+        <div class="row"><button type="button" id="updateBtn">更新を確認</button></div>
+      </section>
     </div>
 
     <!-- 設定 → これまでの記録 -->
@@ -184,6 +192,7 @@
     </form>
   </dialog>
 
+  <script src="version.js"></script>
   <script type="module" src="app.js"></script>
 </body>
 </html>

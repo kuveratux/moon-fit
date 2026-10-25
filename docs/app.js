@@ -813,9 +813,86 @@ async function init() {
   // ブラウザが空き容量の都合でデータを消さないよう頼む（認められるかはブラウザ次第）
   navigator.storage?.persist?.();
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
-    navigator.serviceWorker.register('sw.js');
+    navigator.serviceWorker.register('sw.js').catch(console.error);
   }
   await load();
 }
+
+// ---- バージョンと更新（EARN VIEWER と同じ作り） ----
+
+function showStatus() {
+  $('status').textContent = `Version：${self.APP_VERSION}`;
+}
+
+// 新しい版の Service Worker に入れ替わるまで待ってから再読み込みする（最大 15 秒）
+// 先に保管庫を消すと、入れ替わる前に古い版の Service Worker が古いファイルを取り直してしまうことがあるため、消さない
+// （古い版の保管庫は、新しい版の Service Worker が入れ替わるときに消す）
+// 戻り値：入れ替わったら true（再読み込みする）。入れ替わらなければ false
+function waitForNewWorker(reg, ms) {
+  return new Promise(resolve => {
+    let done = false;
+    const finish = v => { if (!done) { done = true; resolve(v); } };
+    navigator.serviceWorker.addEventListener('controllerchange', () => finish(true), { once: true });
+    const watch = w => w && w.addEventListener('statechange', () => { if (w.state === 'activated') finish(true); if (w.state === 'redundant') finish(false); });
+    watch(reg.installing); watch(reg.waiting);
+    reg.addEventListener('updatefound', () => watch(reg.installing));
+    if (reg.waiting) reg.waiting.postMessage('skipWaiting');
+    setTimeout(() => finish(false), ms);
+  });
+}
+
+async function applyUpdate() {
+  $('status').textContent = '更新中…';
+  try {
+    const reg = await navigator.serviceWorker.getRegistration();
+    if (reg) {
+      const waiting = waitForNewWorker(reg, 15000);
+      await reg.update();
+      const ok = await waiting;
+      if (!ok && !(await newerVersion())) {
+        showStatus();
+        alert('新しいバージョンの準備ができませんでした。公開の直後は、反映まで数分かかることがあります。少し待ってから、もう一度お試しください。');
+        return;
+      }
+    }
+  } catch { /* 失敗しても再読み込みで取り直す */ }
+  location.reload();
+}
+
+// 公開サイトの一時保管（最大 10 分）を通さずに、最新の版の番号を読む。今より新しければその番号、同じなら null
+async function newerVersion() {
+  const res = await fetch(`version.js?t=${Date.now()}`, { cache: 'no-store' });
+  const latest = ((await res.text()).match(/APP_VERSION\s*=\s*'([^']+)'/) || [])[1];
+  return latest && latest !== self.APP_VERSION ? latest : null;
+}
+
+$('appVersion').textContent = self.APP_VERSION;
+showStatus();
+// 「新しいバージョンがあります［更新する］」は、新しい版に入れ替わったあとに出るので、すぐ再読み込みする
+$('reloadBtn').addEventListener('click', () => location.reload());
+
+if ('serviceWorker' in navigator) {
+  // 新しい版の Service Worker に切り替わったら、再読み込みを促す（初回のインストール時は除く）
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController) $('updateNote').hidden = false; });
+}
+
+$('updateBtn').addEventListener('click', async () => {
+  const reg = 'serviceWorker' in navigator && await navigator.serviceWorker.getRegistration();
+  if (!reg) { alert('更新を確認できませんでした'); return; }
+  $('updateBtn').disabled = true;
+  try {
+    const latest = await newerVersion();
+    if (latest) {
+      if (confirm(`新しいバージョン（${latest}）があります。更新しますか？`)) await applyUpdate();
+    } else {
+      alert(`最新のバージョンです（${self.APP_VERSION}）`);
+    }
+  } catch {
+    alert('更新を確認できませんでした（通信を確認してください）');
+  } finally {
+    $('updateBtn').disabled = false;
+  }
+});
 
 init();
